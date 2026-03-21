@@ -94,9 +94,11 @@ if stop_btn:
 def main():
     if st.session_state.monitoring:
         # Initialize components within the session
+        source = None
+        frame = None
         try:
             # Initialize Alerter and Mailer
-            alerter = Alerter(sound_file="assets/alert.mp3") # Ensure assets/alert.mp3 exists or omit
+            alerter = Alerter(sound_file="assets/alert.mp3") 
             mailer = SafetyMailer(
                 sender=os.getenv("EMAIL_SENDER"),
                 receiver=os.getenv("EMAIL_RECEIVER"),
@@ -135,7 +137,7 @@ def main():
                 annotated_frame = detector.plot_results(result, frame)
                 
                 # Check for Violations
-                violations = detector.check_violations(result, roi=roi_px, speed_threshold=speed_threshold)
+                violations = detector.check_violations(result, frame, roi=roi_px, speed_threshold=speed_threshold)
                 
                 # Draw ROI on annotated frame
                 if enable_roi:
@@ -187,7 +189,10 @@ def main():
 
             source.stop()
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             st.error(f"Error during monitoring: {e}")
+            st.expander("Traceback").code(error_details)
             st.session_state.monitoring = False
 
 if __name__ == "__main__":

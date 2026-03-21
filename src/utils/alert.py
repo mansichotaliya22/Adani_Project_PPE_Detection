@@ -8,12 +8,16 @@ import time
 class Alerter:
     def __init__(self, sound_file=None):
         self.last_alert_time = 0
+        self.sound_file = sound_file
+        self.sound = None
+        self._init_mixer()
+
+    def _init_mixer(self):
         try:
-            pygame.mixer.init()
-            if sound_file and os.path.exists(sound_file):
-                self.sound = pygame.mixer.Sound(sound_file)
-            else:
-                self.sound = None
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            if self.sound_file and os.path.exists(self.sound_file):
+                self.sound = pygame.mixer.Sound(self.sound_file)
         except Exception as e:
             print(f"Pygame mixer init error: {e}")
             self.sound = None
@@ -33,11 +37,16 @@ class Alerter:
         cv2.imwrite(filename, frame)
         
         # 2. Play Sound (Throttled to 3 seconds)
-        if self.sound and (time.time() - self.last_alert_time > 3):
-            try:
-                self.sound.play()
-                self.last_alert_time = time.time()
-            except Exception as e:
-                print(f"Sound play error: {e}")
+        if self.sound_file and (time.time() - self.last_alert_time > 3):
+            # Re-check if sound was loaded or if file now exists
+            if not self.sound and os.path.exists(self.sound_file):
+                self._init_mixer()
+                
+            if self.sound:
+                try:
+                    self.sound.play()
+                    self.last_alert_time = time.time()
+                except Exception as e:
+                    print(f"Sound play error: {e}")
             
         return filename

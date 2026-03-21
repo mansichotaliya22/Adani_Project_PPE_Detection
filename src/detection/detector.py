@@ -18,7 +18,7 @@ class SafetyDetector:
         # Use built-in plotter for MVP
         return result.plot()
         
-    def check_violations(self, result, roi=None, speed_threshold=50):
+    def check_violations(self, result, frame, roi=None, speed_threshold=50):
         """
         Identify violations from detection results.
         roi: tuple (x1, y1, x2, y2) in absolute pixels
@@ -29,6 +29,9 @@ class SafetyDetector:
         
         # Current IDs in this frame
         current_ids = []
+        h, w = frame.shape[:2]
+        # Normalize threshold (input is 10-200, we treat it as relative to 1000px width)
+        normalized_threshold = (speed_threshold / 1000.0) * w
         
         if boxes is not None:
             for box in boxes:
@@ -60,7 +63,7 @@ class SafetyDetector:
                         prev_cx, prev_cy = self.track_history[track_id]
                         # Calculate Euclidean distance
                         dist = np.sqrt((cx - prev_cx)**2 + (cy - prev_cy)**2)
-                        if dist > speed_threshold:
+                        if dist > normalized_threshold:
                             violations.append("Running Detected")
                     
                     # Update history
