@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.venv
+data/logs/*.db
+data/violations/*
+!data/violations/.gitkeep
+data/models/*.pt
+!data/models/.gitkeep
+yolov8n.pt
+models/
+.pytest_cache/
