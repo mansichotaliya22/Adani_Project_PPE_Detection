@@ -16,8 +16,14 @@ from src.utils.video_utils import get_available_cameras
 # Load environment variables
 load_dotenv()
 
+import pandas as pd
+
 # App Configuration
 st.set_page_config(page_title="SafeSight AI", layout="wide")
+
+# Initialize Session State for Log
+if 'violation_history' not in st.session_state:
+    st.session_state.violation_history = pd.DataFrame(columns=["Time", "Vest", "Mask", "Helmet", "Type"])
 
 # Initialize Modular Components
 MODEL_PATH = os.path.join("models", "ppe_yolov8s.pt")
@@ -25,7 +31,7 @@ DB_PATH = os.path.join("data", "logs", "safesight.db")
 
 # Sidebar - Configuration
 st.sidebar.title("🦺 SafeSight AI Control")
-source_type = st.sidebar.radio("Input Source", ["Webcam", "Video File"])
+source_type = st.sidebar.radio("Input Source", ["Webcam", "Video File", "Image"])
 
 source_path = 0
 if source_type == "Webcam":
@@ -46,6 +52,16 @@ elif source_type == "Video File":
         source_path = temp_video_path
     else:
         st.info("Please upload a video file.")
+        st.stop()
+elif source_type == "Image":
+    uploaded_image = st.sidebar.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
+    if uploaded_image is not None:
+        import numpy as np
+        # Convert to cv2 format
+        file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
+        source_path = cv2.imdecode(file_bytes, 1)
+    else:
+        st.info("Please upload an image.")
         st.stop()
 
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5)
@@ -75,9 +91,11 @@ with col2:
     m1 = st.metric("Total People", 0)
     m2 = st.metric("Violations Detected", 0, delta_color="inverse")
     
-    st.subheader("Violation Log")
-    v_ui_log = st.empty()
-    v_ui_log.info("No violations detected yet.")
+    st.write("**Safety Compliance Score**")
+    compliance_placeholder = st.empty()
+    
+    st.subheader("Detailed Violation Log")
+    v_ui_log_table = st.empty()
 
 # Main Control Buttons
 start_btn = st.sidebar.button("Start Monitoring")
@@ -99,21 +117,16 @@ def main():
         try:
             # Initialize Alerter and Mailer
             alerter = Alerter(sound_file="assets/alert.mp3") 
-            mailer = SafetyMailer(
-                sender=os.getenv("EMAIL_SENDER"),
-                receiver=os.getenv("EMAIL_RECEIVER"),
-                password=os.getenv("EMAIL_PASSWORD")
-            )
             logger = SafetyLogger(db_path=DB_PATH)
             detector = SafetyDetector(model_path=MODEL_PATH, conf_threshold=conf_threshold)
             source = VideoSource(source_type.lower().replace(" ", ""), source_path)
-            
+
             st.info("Monitoring started...")
-            
+
             last_log_time = 0
             last_email_time = 0
             total_violations = 0
-            
+
             while st.session_state.monitoring:
                 frame = source.get_frame()
                 if frame is None:
@@ -136,8 +149,8 @@ def main():
                 result = detector.detect(frame)
                 annotated_frame = detector.plot_results(result, frame)
                 
-                # Check for Violations
-                violations = detector.check_violations(result, frame, roi=roi_px, speed_threshold=speed_threshold)
+                # Check for Violations & Compliance
+                violations_data, stats = detector.check_violations(result, frame, roi=roi_px, speed_threshold=speed_threshold)
                 
                 # Draw ROI on annotated frame
                 if enable_roi:
@@ -145,39 +158,56 @@ def main():
                     cv2.putText(annotated_frame, "DANGER ZONE", (rx1, ry1-10), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
 
-                # Count people
-                people_count = 0
-                if result.boxes is not None:
-                    for box in result.boxes:
-                        if result.names[int(box.cls[0])] == "person":
-                            people_count += 1
+                # Compliance Score calculation
+                total_people = stats["total_people"]
+                safe_count = stats["safe_count"]
+                compliance_score = (safe_count / total_people * 100) if total_people > 0 else 100.0
+                
+                # Update Gauge/Metric
+                color = "green" if compliance_score > 90 else "orange" if compliance_score > 70 else "red"
+                compliance_placeholder.markdown(f"<h1 style='text-align: center; color: {color};'>{compliance_score:.1f}%</h1>", unsafe_allow_html=True)
 
                 # Alerting & Logging Logic
                 current_time = time.time()
-                if violations:
-                    total_violations += len(violations)
+                if violations_data:
+                    total_violations += len(violations_data)
                     # Throttled Logging (every 5 seconds)
                     if current_time - last_log_time > 5:
-                        v_type_str = ", ".join(violations)
+                        v_types = [v["type"] for v in violations_data]
+                        v_type_str = ", ".join(list(set(v_types)))
+                        v_coord = violations_data[0]
+                        
+                        # Prepare Table Entry
+                        new_entry = {
+                            "Time": datetime.now().strftime("%H:%M:%S"),
+                            "Vest": "✅", "Mask": "✅", "Helmet": "✅",
+                            "Type": v_type_str
+                        }
+                        
+                        # Set crosses for detected PPE violations
+                        for v in violations_data:
+                            if v.get("ppe_col"):
+                                new_entry[v["ppe_col"]] = "❌"
+                        
+                        # Update session state history (keep last 15)
+                        st.session_state.violation_history = pd.concat([
+                            pd.DataFrame([new_entry]), 
+                            st.session_state.violation_history
+                        ]).head(15)
+                        
+                        # Display Table
+                        v_ui_log_table.table(st.session_state.violation_history)
                         
                         # Trigger Alerter (Save Snapshot + Audio)
-                        image_path = alerter.trigger(annotated_frame, violations)
+                        image_path = alerter.trigger(annotated_frame, v_types)
                         
-                        # Log to DB
-                        logger.log_violation(v_type_str, image_path)
-                        
-                        # Update UI Log
-                        v_ui_log.error(f"Alert: {v_type_str} at {datetime.now().strftime('%H:%M:%S')}")
+                        # Log to DB with coordinates
+                        logger.log_violation(v_type_str, image_path, x=v_coord["x"], y=v_coord["y"])
                         
                         last_log_time = current_time
-                        
-                        # Throttled Email (every 60 seconds)
-                        if current_time - last_email_time > 60:
-                            mailer.send_email_background(v_type_str, image_path)
-                            last_email_time = current_time
 
                 # Update Metrics
-                m1.metric("Total People", people_count)
+                m1.metric("Total People", total_people)
                 m2.metric("Violations Detected", total_violations, delta_color="inverse")
                 
                 # Display Frame

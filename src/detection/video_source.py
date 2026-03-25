@@ -7,11 +7,23 @@ class VideoSource:
         self.source_type = source_type.lower()
         self.source_path = source_path
         self.cap = None
+        self.image_frame = None
 
         if self.source_type in ["file", "videofile"] and not os.path.exists(str(source_path)):
             raise ValueError(f"File not found: {source_path}")
 
     def start(self):
+        if self.source_type == "image":
+            import numpy as np
+            if isinstance(self.source_path, np.ndarray):
+                self.image_frame = self.source_path
+            else:
+                self.image_frame = cv2.imread(str(self.source_path))
+            
+            if self.image_frame is None:
+                raise RuntimeError(f"Could not load image from: {self.source_path}")
+            return
+
         if self.source_type == "webcam":
             # On Windows, cv2.CAP_DSHOW is often more robust for webcam access
             index = int(self.source_path)
@@ -26,6 +38,11 @@ class VideoSource:
             raise RuntimeError(f"Could not open video source: {self.source_type} at path/index {self.source_path}")
 
     def get_frame(self):
+        if self.source_type == "image":
+            if self.image_frame is None:
+                self.start()
+            return self.image_frame.copy()
+
         if self.cap is None:
             self.start()
         ret, frame = self.cap.read()

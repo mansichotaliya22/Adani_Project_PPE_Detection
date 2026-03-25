@@ -14,14 +14,14 @@ class SafetyLogger:
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS violations
-                     (timestamp TEXT, type TEXT, image_path TEXT)''')
+                     (timestamp TEXT, type TEXT, image_path TEXT, x INTEGER, y INTEGER)''')
         conn.commit()
         conn.close()
         
-    def log_violation(self, v_type, image_path):
+    def log_violation(self, v_type, image_path, x=None, y=None):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("INSERT INTO violations VALUES (?, ?, ?)", (timestamp, v_type, image_path))
+        c.execute("INSERT INTO violations VALUES (?, ?, ?, ?, ?)", (timestamp, v_type, image_path, x, y))
         conn.commit()
         conn.close()
