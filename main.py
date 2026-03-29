@@ -117,6 +117,11 @@ def main():
         try:
             # Initialize Alerter and Mailer
             alerter = Alerter(sound_file="assets/alert.mp3") 
+            mailer = SafetyMailer(
+                sender=os.getenv("EMAIL_SENDER"),
+                receiver=os.getenv("EMAIL_RECEIVER"),
+                password=os.getenv("EMAIL_PASSWORD")
+            )
             logger = SafetyLogger(db_path=DB_PATH)
             detector = SafetyDetector(model_path=MODEL_PATH, conf_threshold=conf_threshold)
             source = VideoSource(source_type.lower().replace(" ", ""), source_path)
@@ -205,6 +210,11 @@ def main():
                         logger.log_violation(v_type_str, image_path, x=v_coord["x"], y=v_coord["y"])
                         
                         last_log_time = current_time
+
+                        # Throttled Email (every 60 seconds)
+                        if current_time - last_email_time > 60:
+                            mailer.send_email_background(v_type_str, image_path)
+                            last_email_time = current_time
 
                 # Update Metrics
                 m1.metric("Total People", total_people)

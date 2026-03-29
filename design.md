@@ -20,7 +20,7 @@ graph TD
     F & G & H -->|Violation?| I[Alert System];
     I -->|Yes| J[Visual Alert + Beep];
     I -->|Yes| K[Save Snapshot];
-    I -->|Yes| L[Log to DB];
+I -->|Yes| L[Log to DB];
     I -->|Yes| M[Send Email];
     J & D -->|Annotated Frame| B;
 ```
