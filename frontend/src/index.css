@@ -3,7 +3,11 @@
 @tailwind utilities;
 
 body {
-  @apply bg-slate-950 text-slate-50 min-h-screen overflow-x-hidden;
+  background: linear-gradient(135deg, #1B3C53, #234C6A);
+  color: white;
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, sans-serif;
+  overflow-x: hidden;
 }
 
 ::-webkit-scrollbar {
@@ -11,9 +15,10 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-slate-900;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-700 rounded-full;
+  background: #456882;
+  border-radius: 999px;
 }
